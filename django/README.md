@@ -1,4 +1,6 @@
 - [Creating custom user with account app.](#creating-custom-user-with-account-app)
+- [Sending email in django](#sending-email-in-django)
+- [Setting Static files, templates and media](#setting-static-files-templates-and-media)
 
 ## Creating custom user with account app. 
 
@@ -123,21 +125,28 @@ from . import views
 from django.urls import path
 
 urlpatterns = [
+    # For login logout
     path('login/', views.AccountLoginView.as_view(), name='login'),
     path('logout/', views.AccountLogoutView.as_view(), name='logout'),
 
+    # For password change
     path('password_change/', views.AccountPasswordChangeView.as_view(), name='password_change'),
     path('password_change/done/', views.AccountPasswordChangeDoneView.as_view(), name='password_change_done'),
 
+    # For Password rest, email setup is required
     path('password_reset/', views.AccountPasswordResetView.as_view(), name='password_reset'),
     path('password_reset/done/', views.AccountPasswordResetDoneView.as_view(), name='password_reset_done'),
     path('reset/<uidb64>/<token>/', views.AccountPasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('reset/done/', views.AccountPasswordResetCompleteView.as_view(), name='password_reset_complete'),
+
+    # For User register and edit. 
+    path('register/', views.AccountRegisterView.as_view(), name='register'),
+    path('update/<int:pk>', views.AccountUpdateView.as_view(), name='update'),
 ]
 
 ```
 
-**Login and Password Change views for account**
+**Views for URL**
 - This is also a copy paste from `django.contrib.auth.view`, without just creating extra `views.py` file in `apps/account` you can just reference these views from `django.contrib.auth.views`. 
 
 - Here rather using `LoginView`, `LogoutView` directly from `django.contrib.auth.view` we are subclassing these classbased views such that `LoginView` is inherited to `AccountLoginView` so as to fit our customized need. 
@@ -149,8 +158,15 @@ such as ` password_reset_form.html, password_reset_complete.html, password_chang
 
 ```python
 # apps/account/views.py 
-from django.shortcuts import render
-
+from django.views.generic.edit import CreateView, UpdateView
+from django.shortcuts import render, reverse
+from django.urls import reverse_lazy
+from django.contrib import messages
+from .models import User
+from .forms import (
+    AccountRegisterForm,
+    AccountUpdateForm
+)
 from django.contrib.auth.views import (
     LoginView,
     LogoutView,
@@ -159,57 +175,163 @@ from django.contrib.auth.views import (
     PasswordResetView,
     PasswordResetDoneView,
     PasswordResetConfirmView,
-    PasswordResetCompleteView
+    PasswordResetCompleteView,
 
 )
 
 
 class AccountLoginView(LoginView):
-    # value of template_name in Parent class LoginView is same no need to specify 
-    template_name = 'registration/login.html'  
+    template_name = 'account/registration/login.html'  # This is same in LoginView class
 
 
 class AccountLogoutView(LogoutView):
-    template_name = 'registration/logged_out.html'
+    template_name = 'account/registration/logged_out.html'
 
 
 class AccountPasswordChangeView(PasswordChangeView):
-    template_name = 'registration/password_change_form.html'
+    template_name = 'account/registration/password_change_form.html'
+    success_url = reverse_lazy('account:password_change_done')
 
 
 class AccountPasswordChangeDoneView(PasswordChangeDoneView):
-    template_name = 'registration/password_change_done.html'
+    template_name = 'account/registration/password_change_done.html'
 
 
 class AccountPasswordResetView(PasswordResetView):
-    email_template_name = 'registration/password_reset_email.html'
-    template_name = 'registration/password_reset_form.html'
-
-
-class AccountPasswordResetDoneView(PasswordResetDoneView):
-    template_name = 'registration/password_reset_done.html'
+    """
+    Provide password rest form
+    """
+    email_template_name = 'account/registration/password_reset_email.html'
+    template_name = 'account/registration/password_reset_form.html'
 
 
 class AccountPasswordResetConfirmView(PasswordResetConfirmView):
-    template_name = 'registration/password_reset_confirm.html'
+    template_name = 'account/registration/password_reset_confirm.html'
+
+
+class AccountPasswordResetDoneView(PasswordResetDoneView):
+    template_name = 'account/registration/password_reset_done.html'
 
 
 class AccountPasswordResetCompleteView(PasswordResetCompleteView):
-    template_name = 'registration/password_reset_complete.html'
+    template_name = 'account/registration/password_reset_complete.html'
+
+
+class AccountRegisterView(CreateView):
+    form_class = AccountRegisterForm
+    template_name = 'account/registration/account_register.html'
+
+    def form_valid(self, form):
+        user = form.save(commit=False)
+        user.save()
+        messages.add_message(self.request, level=messages.SUCCESS, message="Account created successfully")
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        return render(self, self.request, 'account/registration/account_register.html', {
+            'form': form
+        })
+
+    def get_success_url(self) -> str:
+        return reverse("account:login")
+
+
+class AccountUpdateView(UpdateView):
+    form_class = AccountUpdateForm
+    model = User
+    template_name = 'account/registration/account_register.html'
+
+    def form_valid(self, form):
+        user = form.save(commit=False)
+        user.save()
+        messages.add_message(self.request, level=messages.SUCCESS, message="Account updated successfully")
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        return render(self, self.request, 'account/registration/account_register.html', {
+            'form': form
+        })
+
+    def get_success_url(self) -> str:
+        return reverse("account:login")
+
 
 
 ```
 
-**Forms in account**
+**Forms used in `account/views.py`**
 ```python 
-# accounts/views.py
-from django.urls import reverse_lazy
-from django.views.generic.edit import CreateView
+# account/forms.py
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm, UsernameField
+from .models import User
 
-from .forms import CustomUserCreationForm
 
-class SignUpView(CreateView):
-    form_class = CustomUserCreationForm
-    success_url = reverse_lazy("login")
-    template_name = "registration/signup.html"
+class AccountRegisterForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ("email",)
+        field_classes = {'username': UsernameField}
+
+
+class AccountUpdateForm(UserChangeForm):
+    class Meta:
+        model = User
+        fields = ('email', 'first_name', 'last_name',)
+        field_classes = {'username': UsernameField}
+
+```
+
+## Sending email in django
+
+
+## Setting Static files, templates and media 
+
+**Creating `templates, static and media` folder**
+
+To set html templates and static files in django create `templates` and `static` folder in django project root directory 
+
+```python 
+mkdir static 
+mkdir templates
+mkdir media
+```
+
+Copy all `img, js, css, plugins` file in static directory and all `.html` files in templates directory. 
+
+**Update Settings.py file**
+Update `settings.py` file.
+```python
+
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    'static',
+    BASE_DIR / "static",
+
+]
+
+# Change this for your convinenet
+STATIC_ROOT = "C:\\Users\\user\\AppData\\Local\\Temp"
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = '/media/'
+
+```
+
+**Server static and media in dev environment**
+To serve in dev environment update `urls.py` file of root project. 
+
+```python 
+# project_name/urls.py
+
+from django.conf import settings
+from django.conf.urls.static import static
+
+if settings.DEBUG:
+    # Serve media in development mode
+    urlpatterns +=  static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+
+**Use load static to load static files**
+```python 
+{% load static %}
 ```
