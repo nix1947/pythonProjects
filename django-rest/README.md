@@ -3,11 +3,12 @@
 ## Clone the repo 
 
 ```bash 
-D:\projects\lms\lms-backend>git clone https://github.com/PearlInfotech/lms-backend
+D:\>git clone https://github.com/PearlInfotech/lms-backend
 ```
 
-## Create virtualenv 
+## Create a `virtualenv` environment
 ```python
+# venv is the name of the virtual environment
 virtualenv ven
 
 ```
@@ -24,11 +25,11 @@ pip install djangorestframework
 
 
 ## Create requirement files
-Currently base `requirements.txt` is as follows
+ `requirements.txt` is as follows
+ 
 ```python
 Django
 djangorestframework
-
 ```
 ```python 
 pip freeze > requirements.txt
@@ -65,7 +66,7 @@ python manage.py startapp course apps/course
 ```
 
 ## Register your first app. 
-- After creating apps register it with `django` in `settings.py` as shown below. 
+- After creating apps register it in your  `project` using `settings.py` file as shown below. 
 
 ```python 
 INSTALLED_APPS = [
