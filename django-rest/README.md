@@ -167,6 +167,64 @@ admin.site.register(User, UserAdmin)
 
 python manage.py createsuperuser
 ```
+## Common reusable model  in django  
+- In core project create `abstract_models.py` file with meta `abstract=True` to inherits the common fields in other django models 
+
+```python 
+# lms/abstract_models.py
+from django.db import models
+
+
+class TimeStampModel(models):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+```
+**Relations**
+```python
+# course/models.py
+from django.db import models
+
+from apps.account.models import User
+from lms.abstract_model import TimeStampModel
+
+
+class Category(TimeStampModel):
+    title = models.CharField(max_length=255, unique=True)
+    description = models.TextField()
+    # format: class(in_plural)+ field_name
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="categories_created_by", null=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="categories_updated_by", null=True)
+
+    class Meta:
+        ordering = ['-created_date']
+
+
+class Course(TimeStampModel):
+    title = models.CharField(max_length=255, unique=True)
+    description = models.TextField()
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="courses_created_by", null=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="courses_updated_by", null=True)
+    thumbnail = models.ImageField(upload_to="thumbnail/")
+    video_path = models.FileField(upload_to="videos/")
+
+    def __str__(self):
+        return self.title
+
+
+class CourseCategory(TimeStampModel):
+    course = models.ForeignKey(Course, on_delete=models.SET_NULL, related_name="course_categories_course", null=True)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, related_name="course_categories_category",
+                                 null=True)
+
+    def __str__(self):
+        return self.course.title + " " + self.category.title
+
+```s
+
 
 ## Testing In django
 
@@ -297,10 +355,6 @@ class TestViews(TestCase):
      
 
 ```
-
-
-
-
 
 
 ### Testing with pytest
