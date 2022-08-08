@@ -223,7 +223,446 @@ class CourseCategory(TimeStampModel):
     def __str__(self):
         return self.course.title + " " + self.category.title
 
-```s
+```
+
+## Creating Apis
+- Based on the created models, to create api, we require three files `serializers.py`  to format the data, just work like `forms.py` in django, `views.py` file to process the client request and `urls.py` for api endpoints. 
+
+***Serializers.py** 
+```python
+# apps/course/serializers.py
+from rest_framework import serializers
+from .models import Course, Category
+
+
+class CourseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Course
+        fields = '__all__'
+
+```
+
+***Views.py***
+```python
+# apps/course/views.py
+from rest_framework import viewsets
+from .models import Course, Category
+from .serializers import CourseSerializer, CategorySerializer
+
+
+class CourseViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
+    queryset = Course.objects.all().order_by('-updated_date')
+    serializer_class = CourseSerializer
+
+```
+
+***root_api_urls.py**
+```python
+# lms/api_urls.py
+from rest_framework import routers
+
+from apps.account import views as account_views
+from apps.course import views as course_views
+
+router = routers.DefaultRouter()
+
+# Account app router
+router.register("users", account_views.UserViewSet)
+router.register("permissions", account_views.PermissionViewSet)
+router.register("roles", account_views.GroupViewSet)
+
+# Course app router
+router.register(r'courses', course_views.CourseViewSet)
+router.register(r'categories', course_views.CategoryViewSet)
+router.register(r'keywords', course_views.KeyWordViewSet)
+router.register(r'sections', course_views.CourseSectionViewSet)
+router.register(r'contents', course_views.CourseSectionContentViewSet)
+```
+
+***urls.py**
+```python 
+# lms_project/urls.py
+from django.contrib import admin
+from django.urls import include, path
+
+from . import api_urls
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+    path('api/', include(api_urls.router.urls))
+
+]
+
+```
+
+***Setup Pagination***
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10
+}
+```
+
+***Authentication**
+- Use `djangorestframework-simplejwt` for authentication
+- **Installation**: `pip install djangorestframework-simplejwt`
+- Update in settings.py file 
+
+
+```python
+REST_FRAMEWORK = {
+  
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+    
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+
+```
+
+
+## Views in rest framework
+
+### Function based view
+
+  - Use `Request` object which is the extension of `HTTPRequest`
+  - `request.data` is similar to `request.POST` 
+  - `request.POST`  # Only handles form data.  Only works for 'POST' method.
+  - `request.data  # Handles arbitrary data.  Works for 'POST', 'PUT' and 'PATCH' methods.
+  - Use `Response(data)` to send the data which is equivalent to `TemplateResponse`
+  - use `@api_view` decorator to work with function based view
+  - Use `APIView` to work with classed based view
+  
+  ***Views.py***
+
+
+```python
+  from  rest_framework.decorators import api_view
+  from rest_framework.response import Response 
+  from rest_framework import status
+
+    @api_view(['GET', 'POST'])
+    def course_list(request):
+        if request.method == 'GET':
+            books = Course.objects.all()
+            serializer = CourseSerializer(books, many=True)
+            return Response(serializer.data)
+
+        elif request.method == 'POST':
+            # Processing form data
+        serializer = CourseSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @api_view(['GET', 'PUT', 'DELETE'])
+    def book_detail(request, pk):
+        """
+        Retrieve, update or delete a code snippet.
+        """
+        try:
+            snippet = Course.objects.get(pk=pk)
+        except Course.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'GET':
+            serializer = CourseSerializer(snippet)
+            return Response(serializer.data)
+
+        elif request.method == 'PUT':
+            serializer = CourseSerializer(snippet, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        elif request.method == 'DELETE':
+            snippet.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+```
+
+### Class based views
+- Use explicit two view `ListView` and `DetailView`, ListView will server `List` of object and `creating` of object while DetailView serve `Read, Update and Delete` actions. 
+
+***Permission.py*** 
+```python
+from rest_framework import permissions
+
+
+class IsOwnerOrReadOnly(permissions.BasePermission):
+    """
+    Custom permission to only allow owners of an object to edit it.
+    """
+
+    def has_object_permission(self, request, view, obj):
+        # Read permissions are allowed to any request,
+        # so we'll always allow GET, HEAD or OPTIONS requests.
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Write permissions are only allowed to the owner of the snippet.
+        return obj.owner == request.user
+
+```
+
+***ListView**
+```python
+from snippets.models import Snippet
+from snippets.serializers import CourseSerializer
+from django.http import Http404
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework import permissions
+
+
+class CourseList(APIView):
+    """
+    List all snippets, or create a new snippet.
+    """
+
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+
+
+    def get(self, request, format=None):
+        snippets = Course.objects.all()
+        serializer = CourseSerializer(snippets, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, format=None):
+        serializer = CourseSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+    def perform_create(self, serializer):
+        serializer.created_by = self.request.user 
+        serializer.save()
+        
+     
+
+```
+
+***Detail View***
+```python
+class CourseDetail(APIView):
+    """
+    Retrieve, update or delete a course instance.
+    """
+    def get_object(self, pk):
+        try:
+            return Course.objects.get(pk=pk)
+        except Course.DoesNotExist:
+            raise Http404
+
+    def get(self, request, pk, format=None):
+        course = self.get_object(pk)
+        serializer = CourseSerializer(Course)
+        return Response(serializer.data)
+
+    def put(self, request, pk, format=None):
+        course = self.get_object(pk)
+        serializer = CourseSerializer(course, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk, format=None):
+        course = self.get_object(pk)
+        course.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+```
+
+***Using viewsets***
+
+```python
+class CourseViewSet(viewsets.ModelViewSet):
+    queryset = Course.objects.all().order_by('-updated_date')
+    serializer_class = CourseSerializer
+```
+- Equivalent code to process `POST and GET` request  by viewsets are as follows
+  
+
+```python
+from rest_framework import viewsets
+
+class CourseViewSet(viewsets.ModelViewSet):
+    queryset = Course.objects.all().order_by('-updated_date')
+    serializer_class = CourseSerializer
+    permission_classes = [IsAuthenticated, ]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        # Mapped to GET request to list all objects
+        # GET /courses
+        # Reverse url: "basename-list"
+        # Base name is given while registering to the router
+        pass
+
+    def create(self, request, *args, **kwargs):
+        # Mapped to CREATE request
+        # POST /courses
+        # Reverse url: "basename-list"
+        pass
+
+    def retrieve(self, request, *args, **kwargs):
+        # Mapped to GET request /courses/:1
+        # GET /courses/:1
+        # Reverse url: "basename-detail"
+        pass
+
+    def update(self, request, *args, **kwargs):
+        # Mapped to PUT request /courses/:1
+        # PUT /courses/:1
+        # Reverse url: "basename-list"
+    
+        pass
+
+    def partial_update(self, request, *args, **kwargs):
+        # Mapped to PATCH request /courses/:1
+        # PATCH /courses/:1
+        # Reverse url: "basename-list"
+        pass
+
+    def destroy(self, request, *args, **kwargs):
+        # Mapped to DELETE request /courses/:1
+        # DELETE /courses/:1
+        # Reverse url: "basename-list"
+        pass
+```
+The above `CourseViewSet` can be mapped to the following explicit URL by creating a `Router`
+
+***urls.py** 
+```python
+from rest_framework import routers
+
+router = routers.DefaultRouter()
+# basename are useful to retrieve the urls in reverse.
+router.register(r'courses', course_views.CourseViewSet, basename="courses")
+
+```
+Now register the `router.urls` in `urlpatterns`  as shown below.
+
+```python
+urlpatterns = [
+path('admin/', admin.site.urls),
+path('api/', include(api_urls.router.urls)), 
+]
+
+
+``` 
+
+Registering simple `ClassBased` Generic view explicitly in `urls.py` as shown below.
+
+***urls.py***
+
+```python
+from django.urls import path
+from rest_framework.urlpatterns import format_suffix_patterns
+from course import views
+
+urlpatterns = [
+    path('courses/', views.SnippetList.as_view()),
+    path('courses/<int:pk>/', views.CourseDetail.as_view()),
+]
+
+urlpatterns = format_suffix_patterns(urlpatterns)
+```
+
+- Shortcuts of above mentioned `ListAPIView` and `DetailAPIView` can be replaced by the following view given below
+
+```python
+from snippets.models import Snippet
+from snippets.serializers import SnippetSerializer
+from rest_framework import generics
+
+
+class CourseList(generics.ListCreateAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseSerializer
+
+
+class SnippetDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseSerializer
+```
+
+### Creating API root endpoint
+```python
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework.reverse import reverse
+
+
+@api_view(['GET'])
+def api_root(request, format=None):
+    return Response({
+        'users': reverse('user-list', request=request, format=format),
+        'snippets': reverse('snippet-list', request=request, format=format)
+    })
+
+```
+
+## Adding swagger api to rest framework
+- Install `drf_yasg` 
+  
+```python 
+pip install -U drf-yasg
+```
+
+- Updated in `settings.py` file 
+  
+```python 
+INSTALLED_APPS = [
+   ...
+   'django.contrib.staticfiles',  # required for serving swagger ui's css/js files
+   'drf_yasg',
+   ...
+]
+```
+
+- Update Root `urls.py` file 
+
+```python
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+   openapi.Info(
+      title="MOF LMS API",
+      default_version='v1',
+      description="lms",
+      terms_of_service="http://lms.mof.gov.np",
+      contact=openapi.Contact(email="it@snippets.local"),
+   ),
+   public=True,
+   permission_classes=[permissions.AllowAny],
+)
+
+urlpatterns = [
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+   re_path(r'^swagger/$', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+   re_path(r'^redoc/$', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+]
+
+```
+
+- The exposed endpoints are 
+    - A JSON view of your API specification at /swagger.json
+    - A YAML view of your API specification at /swagger.yaml
+    - A swagger-ui view of your API specification at /swagger/
+    - A ReDoc view of your API specification at /redoc/
+
 
 
 ## Testing In django
