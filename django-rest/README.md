@@ -1,3 +1,32 @@
+- [Django rest framework](#django-rest-framework)
+  - [Clone the repo](#clone-the-repo)
+  - [Create a `virtualenv` environment](#create-a-virtualenv-environment)
+  - [Active and install packages.](#active-and-install-packages)
+  - [Create requirement files](#create-requirement-files)
+  - [Install from requirements file](#install-from-requirements-file)
+  - [Create django project](#create-django-project)
+  - [Open `src` folder using Pycharm or other IDE of your choice such as vscode](#open-src-folder-using-pycharm-or-other-ide-of-your-choice-such-as-vscode)
+  - [Create your first app](#create-your-first-app)
+  - [Register your first app.](#register-your-first-app)
+  - [Setting up Authorization module](#setting-up-authorization-module)
+  - [Creating a custom User model](#creating-a-custom-user-model)
+  - [Create and run the migration](#create-and-run-the-migration)
+  - [Register account app in django admin.](#register-account-app-in-django-admin)
+  - [Creating super user to login in django dashboard](#creating-super-user-to-login-in-django-dashboard)
+  - [Common reusable model  in django](#common-reusable-model--in-django)
+  - [Creating Apis](#creating-apis)
+  - [Views in rest framework](#views-in-rest-framework)
+    - [Function based view](#function-based-view)
+    - [Class based views](#class-based-views)
+    - [Creating API root endpoint](#creating-api-root-endpoint)
+  - [Adding swagger api to rest framework](#adding-swagger-api-to-rest-framework)
+    - [Enable function based view with swagger.](#enable-function-based-view-with-swagger)
+  - [Testing In django](#testing-in-django)
+    - [Unit Testing in django](#unit-testing-in-django)
+    - [Testing with pytest](#testing-with-pytest)
+      - [Pytest fixtures.](#pytest-fixtures)
+      - [Using `FactoryBoy and Faker` with pytest](#using-factoryboy-and-faker-with-pytest)
+
 # Django rest framework 
 
 ## Clone the repo 
@@ -33,6 +62,11 @@ djangorestframework
 ```
 ```python 
 pip freeze > requirements.txt
+```
+
+## Install from requirements file 
+```python 
+pip install -r requirements.txt
 ```
 
 ## Create django project 
@@ -227,6 +261,38 @@ class CourseCategory(TimeStampModel):
 
 ## Creating Apis
 - Based on the created models, to create api, we require three files `serializers.py`  to format the data, just work like `forms.py` in django, `views.py` file to process the client request and `urls.py` for api endpoints. 
+- Fields level validation can be done by adding `validate_field_name` methods to serializer class. 
+
+```python
+    def validate_password(self, value):
+        if len(value) < 8 :
+            raise serializers.ValidationError("Minimum length of password should be eight")
+        return value
+         
+``` 
+
+- Object level validation can be done inside `validate` method. 
+
+```python
+from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
+
+class EventSerializer(serializers.Serializer):
+    description = serializers.CharField(max_length=100)
+    start = serializers.DateTimeField()
+    finish = serializers.DateTimeField()
+    # By default django email fields have not added unique=True
+    email = serializers.EmailField(max_length=255, validators=[UniqueValidator(queryset=User.objects.all())])
+
+    def validate(self, data):
+        """
+        Check that start is before finish.
+        """
+        if data['start'] > data['finish']:
+            raise serializers.ValidationError("finish must occur after start")
+        return data
+
+```
 
 ***Serializers.py** 
 ```python
@@ -665,6 +731,29 @@ urlpatterns = [
 
 
 
+### Enable function based view with swagger.
+
+```python
+from drf_yasg.utils import swagger_auto_schema
+
+@swagger_auto_schema(
+    methods=['post'],
+    request_body=UserRegisterSerializer,
+    responses={200: UserRegisterSerializer},
+    operation_description="User registration"
+)
+@api_view(['POST'])
+def user_register(request):
+    if request.method == 'POST':
+        user = UserRegisterSerializer(data=request.data)
+        if user.is_valid():
+            user.save()
+            return Response(user.data, status=status.HTTP_201_CREATED)
+
+        return Response(user.errors, status=status.HTTP_400_BAD_REQUEST)
+
+```
+
 ## Testing In django
 
 **Automated test**
@@ -794,6 +883,7 @@ class TestViews(TestCase):
      
 
 ```
+
 
 
 ### Testing with pytest
